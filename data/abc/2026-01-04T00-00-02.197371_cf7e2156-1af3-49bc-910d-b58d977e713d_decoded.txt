@@ -1,0 +1,1 @@
+"['.git', '.gitignore', 'config', 'data', 'decrypt_data.py', 'git_trojan.py', 'modules', 'mytoken.txt', 'screenshot.bmp']"

